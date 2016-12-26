@@ -1,3 +1,4 @@
+import os
 import re
 import heapq
 import functools
@@ -11,6 +12,10 @@ from django.db.models import F
 from django.contrib.auth.models import User
 from django.conf import settings
 from django.core.mail import EmailMessage
+from django.utils.text import slugify as dslugify
+
+from unidecode import unidecode
+from jsonfield import JSONField
 
 
 def _import_profile_title():
@@ -206,12 +211,18 @@ class Sheet(models.Model):
                     p.counter = range(int(p.count))
                 else:
                     p.counter = None
+            if row.image is None:
+                image = None
+            else:
+                image = ('data:image/png;base64,%s' %
+                         base64.b64encode(row.image).decode())
             result.append(dict(
                 id=row.id,
                 profile=row.profile,
                 position=row.position,  # needed?
                 name=row.name,
                 kinds=purchase_list,
+                image=image,
             ))
         profile_ids = set(row['profile'] for row in result)
         titles = get_primary_titles(
@@ -282,6 +293,7 @@ class SheetRow(models.Model):
     position = models.PositiveIntegerField()
     name = models.CharField(max_length=200, blank=False, null=True)
     profile = models.ForeignKey(Profile, blank=False, null=True)
+    image = models.BlobField(null=True, blank=True)
 
     class Meta:
         ordering = ['sheet', 'position']
@@ -668,3 +680,67 @@ def get_profiles_title_status(period=None, time=None):
                          (time is not None and p.status.end_time > time)))
     profiles.sort(key=profile_key)
     return profiles
+
+
+def slugify(string):
+    return dslugify(unidecode(string))
+
+
+def sheet_image_stack_upload(instance, original_filename):
+    base, ext = os.path.splitext(os.path.basename(original_filename))
+    return 'sheet/%s%s' % (slugify(base), ext)
+
+
+class SheetImageStack(models.Model):
+    file = models.FileField(upload_to=sheet_image_stack_upload)
+    sheets = models.PositiveIntegerField()
+    session = models.ForeignKey(Session, on_delete=models.CASCADE)
+
+
+class SheetImage(models.Model):
+    stack = models.ForeignKey(SheetImageStack, on_delete=models.CASCADE)
+    sheet = models.PositiveIntegerField()
+
+    quad = JSONField(default=[])
+    cols = JSONField(default=[])
+    rows = JSONField(default=[])
+    person_rows = JSONField(default=[])
+    crosses = JSONField(default=[])
+    person_counts = JSONField(default=[])
+
+    def get_image(self):
+        try:
+            return self._image
+        except AttributeError:
+            pass
+
+        from regnskab.images.utils import load_pdf_page
+        self._image = load_pdf_page(
+            self.stack.file.name, self.sheet)
+        return self._image
+
+    def compute_person_counts(self):
+        col_bounds = [0, 15, 21, 36]
+
+        i = 0
+        res = []
+        for person_row_count in self.person_rows:
+            j = i + person_row_count
+            person_rows = self.crosses[i:j]
+            groups = []
+            for i, j in zip(col_bounds[:-1], col_bounds[1:]):
+                group_rows = [r[i:j] for r in person_rows]
+                crosses = box_crosses = 0
+                for r in group_rows:
+                    try:
+                        x = next(i for i in range(len(r))
+                                 if not r[len(r)-1-i])
+                    except StopIteration:
+                        x = 0
+                    r_crosses = sum(r) - x
+                    crosses += r_crosses
+                    box_crosses += x
+                groups.append([crosses, box_crosses/2])
+            res.append(groups)
+            i = j
+        self.person_counts = res

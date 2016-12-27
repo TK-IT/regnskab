@@ -49,3 +49,10 @@ def load_pdf_page(filename, page):
         img = scipy.misc.imread(fp.name)
 
     return img
+
+
+def save_png(im_array):
+    img = PIL.Image.fromarray(im_array)
+    output = io.BytesIO()
+    img.save(output, 'PNG')
+    return output.getvalue()

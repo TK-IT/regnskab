@@ -3,6 +3,7 @@ import re
 import heapq
 import functools
 import itertools
+import contextlib
 from collections import namedtuple, defaultdict, OrderedDict
 from decimal import Decimal
 
@@ -171,6 +172,15 @@ def get_primary_titles(title_qs=None, period=None):
     return titles
 
 
+def slugify(string):
+    return dslugify(unidecode(string))
+
+
+def sheet_upload_to(instance, original_filename):
+    base, ext = os.path.splitext(os.path.basename(original_filename))
+    return 'sheet/%s%s' % (slugify(base), ext)
+
+
 class Sheet(models.Model):
     session = models.ForeignKey('Session', on_delete=models.CASCADE,
                                 null=True, blank=False)
@@ -182,6 +192,12 @@ class Sheet(models.Model):
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL,
                                    null=True, blank=False)
     created_time = models.DateTimeField(auto_now_add=True)
+
+    image_file = models.FileField(upload_to=sheet_upload_to,
+                                  blank=True, null=True)
+    image_file_width = models.PositiveIntegerField(blank=True, null=True)
+    row_image = models.FileField(upload_to=sheet_upload_to,
+                                 blank=True, null=True)
 
     def columns(self):
         qs = self.purchasekind_set.all()
@@ -255,6 +271,22 @@ class Sheet(models.Model):
             self._legacy_style = (len(self.purchasekind_set.all()) == 4)
             return self._legacy_style
 
+    @contextlib.contextmanager
+    def image_file_name(self):
+        try:
+            yield self._image_file_name
+        except AttributeError:
+            pass
+        if self.image_file.name:
+            yield self.image_file.name
+        else:
+            with tempfile.NamedTemporaryFile(mode='w+b') as fp:
+                fp.write(sheet.image_file.read())
+                fp.flush()
+                self._image_file_name = fp.name
+                yield fp.name
+                del self._image_file_name
+
     class Meta:
         ordering = ['start_date']
         verbose_name = 'krydsliste'
@@ -293,12 +325,25 @@ class SheetRow(models.Model):
     position = models.PositiveIntegerField()
     name = models.CharField(max_length=200, blank=False, null=True)
     profile = models.ForeignKey(Profile, blank=False, null=True)
-    image = models.BlobField(null=True, blank=True)
+    image_start = models.PositiveIntegerField(blank=True, null=True)
+    image_stop = models.PositiveIntegerField(blank=True, null=True)
 
     class Meta:
         ordering = ['sheet', 'position']
         verbose_name = 'krydslisteindgang'
         verbose_name_plural = verbose_name + 'e'
+
+    def image(self):
+        if not self.sheet.image_file:
+            return ''
+        return format_html(
+            '<div style="display:inline-block;overflow:hidden;' +
+            'position:relative;width:{}px;height:{}px">' +
+            '<img src="{}" style="position:absolute;top:-{}px" /></div>',
+            self.sheet.image_file_width,
+            self.image_stop - self.image_start,
+            self.sheet.image_file.url,
+            self.image_start)
 
     def __str__(self):
         return self.name or str(self.profile)
@@ -682,24 +727,9 @@ def get_profiles_title_status(period=None, time=None):
     return profiles
 
 
-def slugify(string):
-    return dslugify(unidecode(string))
-
-
-def sheet_image_stack_upload(instance, original_filename):
-    base, ext = os.path.splitext(os.path.basename(original_filename))
-    return 'sheet/%s%s' % (slugify(base), ext)
-
-
-class SheetImageStack(models.Model):
-    file = models.FileField(upload_to=sheet_image_stack_upload)
-    sheets = models.PositiveIntegerField()
-    session = models.ForeignKey(Session, on_delete=models.CASCADE)
-
-
 class SheetImage(models.Model):
-    stack = models.ForeignKey(SheetImageStack, on_delete=models.CASCADE)
-    sheet = models.PositiveIntegerField()
+    sheet = models.ForeignKey(Sheet, on_delete=models.CASCADE)
+    page = models.PositiveIntegerField()
 
     quad = JSONField(default=[])
     cols = JSONField(default=[])
@@ -715,8 +745,10 @@ class SheetImage(models.Model):
             pass
 
         from regnskab.images.utils import load_pdf_page
-        self._image = load_pdf_page(
-            self.stack.file.name, self.sheet)
+
+        with self.sheet.image_file_name() as filename:
+            self._image = load_pdf_page(filename, self.page)
+
         return self._image
 
     def compute_person_counts(self):

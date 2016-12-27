@@ -21,11 +21,12 @@ from regnskab.forms import (
 )
 from regnskab.models import (
     Sheet, SheetRow, SheetStatus, Profile, Alias, Title,
-    EmailTemplate, Session,
+    EmailTemplate, Session, SheetImage,
     Transaction, Purchase,
     compute_balance, get_inka, get_default_prices,
     config, get_profiles_title_status,
 )
+from regnskab.images.extract import extract_images
 from .auth import regnskab_permission_required_method
 
 logger = logging.getLogger('regnskab')
@@ -111,7 +112,10 @@ class SheetCreate(FormView):
                   end_date=data['end_date'],
                   period=data['period'],
                   created_by=self.request.user,
-                  session=self.regnskab_session)
+                  session=self.regnskab_session,
+                  image_file=data['image_file'])
+        if image_file:
+            images = extract_images(s)
         s.save()
         for i, kind in enumerate(data['kinds']):
             s.purchasekind_set.create(

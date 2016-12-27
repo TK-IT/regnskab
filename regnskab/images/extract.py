@@ -1,8 +1,11 @@
+import tempfile
+
 import numpy as np
 import scipy.ndimage
 import scipy.signal
 import PIL
 
+from .utils import imagemagick_page_count, load_pdf_page, save_png
 from .quadrilateral import Quadrilateral, extract_quadrilateral
 
 
@@ -234,3 +237,48 @@ def extract_sheet_rows(sheet_image):
         output = io.BytesIO()
         img.save(output, 'PNG')
         yield output.getvalue(), sheet_image.crosses[idx]
+
+
+def extract_images(sheet):
+    images = []
+    with sheet.image_file_name():
+        i = 1
+        while i < 1000:
+            try:
+                im = SheetImage(sheet=sheet, page=i)
+                im.get_image()
+                images.append(im)
+            except Exception:
+                break
+            i += 1
+
+    for im in images:
+        extract_quad(im)
+        extract_rows_cols(im)
+        extract_crosses(im)
+
+    stitched_image = []
+    stitched_image_height = 0
+    rows = []
+    width = 920
+    for im in images:
+        quad = Quadrilateral(im.quad)
+        i = 0
+        for person_row_count in im.person_rows:
+            j = i + person_row_count
+            height = 20 * (j - i)
+            y1, y2 = im.rows[i], im.rows[j]
+            corners = quad.to_world([[0, 1, 1, 0], [y1, y1, y2, y2]]).T
+            person_quad = Quadrilateral(corners)
+            stitched_image.append(extract_quadrilateral(
+                im.get_image(), person_quad, width, height))
+            rows.append(SheetRow(sheet=sheet, position=position,
+                                 image_start=stitched_image_height,
+                                 image_stop=stitched_image_height + height))
+            stitched_image_height += height
+            i = j
+
+    stitched_image = np.concatenate(stitched_image)
+    png_data = save_png(stitched_image)
+
+    return images

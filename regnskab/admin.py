@@ -4,7 +4,7 @@ from django.core.urlresolvers import reverse
 from django.utils.html import format_html
 from regnskab.models import (
     Alias, Transaction, Sheet, EmailTemplate, Session,
-    SheetImageStack, SheetImage,
+    SheetImage,
 )
 
 
@@ -79,10 +79,6 @@ class SessionAdmin(admin.ModelAdmin):
     item_link.verbose_name = 'Opgørelse'
 
 
-class SheetImageStackAdmin(admin.ModelAdmin):
-    pass
-
-
 class SheetImageAdmin(admin.ModelAdmin):
     pass
 
@@ -92,5 +88,4 @@ admin.site.register(Transaction, TransactionAdmin)
 admin.site.register(Sheet, SheetAdmin)
 admin.site.register(EmailTemplate, EmailTemplateAdmin)
 admin.site.register(Session, SessionAdmin)
-admin.site.register(SheetImageStack, SheetImageStackAdmin)
 admin.site.register(SheetImage, SheetImageAdmin)

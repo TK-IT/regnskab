@@ -582,6 +582,7 @@ var Sheet = function (_React$Component5) {
         key: 'empty_row',
         value: function empty_row() {
             return { name: '', profile_id: null,
+                image: null,
                 counts: [null, null, null, null, null, null] };
         }
     }, {
@@ -618,6 +619,19 @@ var Sheet = function (_React$Component5) {
                     personValue: data.profile_id,
                     onChange: this.onChangeCell.bind(this, i),
                     onChangeName: this.onChangeName.bind(this, i) }));
+                if (data.image !== null) {
+                    rows.push(React.createElement(
+                        'div',
+                        { style: {
+                                'width': data.image.width + 'px',
+                                'height': data.image.stop - data.image.start + 'px',
+                                'position': 'relative',
+                                'overflow': 'hidden' } },
+                        React.createElement('img', { src: data.image.url, style: {
+                                'top': -data.image.start + 'px',
+                                'position': 'absolute' } })
+                    ));
+                }
             }
             return React.createElement(
                 'div',

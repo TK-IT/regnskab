@@ -303,6 +303,7 @@ class Sheet extends React.Component {
 
     empty_row() {
         return {name: '', profile_id: null,
+                image: null,
                 counts: [null, null, null, null, null, null]};
     }
 
@@ -337,6 +338,17 @@ class Sheet extends React.Component {
                 personValue={data.profile_id}
                 onChange={this.onChangeCell.bind(this, i)}
                 onChangeName={this.onChangeName.bind(this, i)} />);
+            if (data.image !== null) {
+                rows.push(<div style={{
+                    'width': data.image.width+'px',
+                    'height': (data.image.stop - data.image.start)+'px',
+                    'position': 'relative',
+                    'overflow': 'hidden'}}>
+                    <img src={data.image.url} style={{
+                        'top': -data.image.start + 'px',
+                        'position': 'absolute'}} />
+                </div>);
+            }
         }
         return <div className='sheet'>
             <div className="sheetrow sheetrow-header">

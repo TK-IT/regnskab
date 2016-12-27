@@ -227,11 +227,12 @@ class Sheet(models.Model):
                     p.counter = range(int(p.count))
                 else:
                     p.counter = None
-            if row.image is None:
-                image = None
+            im_url, im_width, im_start, im_stop = row.image_data()
+            if im_url:
+                image = dict(url=im_url, width=im_width,
+                             start=im_start, stop=im_stop)
             else:
-                image = ('data:image/png;base64,%s' %
-                         base64.b64encode(row.image).decode())
+                image = None
             result.append(dict(
                 id=row.id,
                 profile=row.profile,
@@ -333,17 +334,22 @@ class SheetRow(models.Model):
         verbose_name = 'krydslisteindgang'
         verbose_name_plural = verbose_name + 'e'
 
-    def image(self):
+    def image_data(self):
         if not self.sheet.image_file:
+            return None, None, None, None
+        return (self.sheet.image_file.url,
+                self.sheet.image_file_width,
+                self.image_start, self.image_stop)
+
+    def image_html(self):
+        url, width, start, stop = self.image_data()
+        if not url:
             return ''
         return format_html(
             '<div style="display:inline-block;overflow:hidden;' +
             'position:relative;width:{}px;height:{}px">' +
             '<img src="{}" style="position:absolute;top:-{}px" /></div>',
-            self.sheet.image_file_width,
-            self.image_stop - self.image_start,
-            self.sheet.image_file.url,
-            self.image_start)
+            width, stop - start, url, start)
 
     def __str__(self):
         return self.name or str(self.profile)

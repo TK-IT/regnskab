@@ -115,13 +115,18 @@ class SheetCreate(FormView):
                   session=self.regnskab_session,
                   image_file=data['image_file'])
         if image_file:
-            images = extract_images(s)
+            images, rows = extract_images(s)  # sets s.row_image
         s.save()
         for i, kind in enumerate(data['kinds']):
             s.purchasekind_set.create(
                 name=kind['name'],
                 position=i + 1,
                 unit_price=kind['unit_price'])
+        if image_file:
+            for o in images + rows:
+                o.sheet = o.sheet  # Update sheet_id
+            SheetImage.objects.bulk_create(images)
+            SheetRow.objects.bulk_create(rows)
         logger.info("%s: Opret ny krydsliste id=%s i opgørelse=%s " +
                     "med priser %s",
                     self.request.user, s.pk, self.regnskab_session.pk,
@@ -212,6 +217,7 @@ class SheetRowUpdate(TemplateView):
                     profile_id=r['profile'].id,
                     name=r['name'],
                     counts=counts,
+                    image=r['image'],
                 ))
             context_data['rows_json'] = json.dumps(row_data, indent=2)
 

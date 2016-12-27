@@ -1,12 +1,18 @@
-import tempfile
+import io
 
 import numpy as np
 import scipy.ndimage
 import scipy.signal
 import PIL
 
-from .utils import imagemagick_page_count, load_pdf_page, save_png
+from django.core.files import ContentFile
+from django.utils import timezone
+
+from .utils import save_png
 from .quadrilateral import Quadrilateral, extract_quadrilateral
+from regnskab.models import (
+    SheetImage, SheetRow,
+)
 
 
 def contrast_stretch(im, q=0.02):
@@ -226,14 +232,13 @@ def extract_sheet_rows(sheet_image):
     rows = [0] + list(sheet_image.rows) + [1]
 
     i = 0
-    res = []
-    for idx, person_row_count in enumerate(self.person_rows):
+    for idx, person_row_count in enumerate(sheet_image.person_rows):
         j = i + person_row_count
         row_coords = [[0, 1, 1, 0], [rows[i], rows[i], rows[j], rows[j]]]
         row_quad = Quadrilateral(quad.to_world(row_coords).T)
         row_image = extract_quadrilateral(
             im, row_quad, 920, 20*(j-i))
-        img = PIL.Image.fromarray(self.object.get_image())
+        img = PIL.Image.fromarray(row_image)
         output = io.BytesIO()
         img.save(output, 'PNG')
         yield output.getvalue(), sheet_image.crosses[idx]
@@ -260,7 +265,8 @@ def extract_images(sheet):
     stitched_image = []
     stitched_image_height = 0
     rows = []
-    width = 920
+    sheet.row_image_width = width = 920
+    position = 1
     for im in images:
         quad = Quadrilateral(im.quad)
         i = 0
@@ -277,8 +283,12 @@ def extract_images(sheet):
                                  image_stop=stitched_image_height + height))
             stitched_image_height += height
             i = j
+            position += 1
 
     stitched_image = np.concatenate(stitched_image)
     png_data = save_png(stitched_image)
+    png_name = timezone.now().strftime('rows-%Y-%m-%d.png')
+    png_file = ContentFile(png_data, png_name)
+    sheet.row_image = png_file
 
-    return images
+    return images, rows

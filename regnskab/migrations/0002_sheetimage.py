@@ -16,7 +16,7 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='SheetImage',
             fields=[
-                ('id', models.AutoField(verbose_name='ID', primary_key=True, auto_created=True, serialize=False)),
+                ('id', models.AutoField(auto_created=True, verbose_name='ID', serialize=False, primary_key=True)),
                 ('page', models.PositiveIntegerField()),
                 ('quad', jsonfield.fields.JSONField(default=[])),
                 ('cols', jsonfield.fields.JSONField(default=[])),
@@ -33,13 +33,13 @@ class Migration(migrations.Migration):
         ),
         migrations.AddField(
             model_name='sheet',
-            name='image_file_width',
-            field=models.PositiveIntegerField(blank=True, null=True),
+            name='row_image',
+            field=models.FileField(upload_to=regnskab.models.sheet_upload_to, blank=True, null=True),
         ),
         migrations.AddField(
             model_name='sheet',
-            name='row_image',
-            field=models.FileField(upload_to=regnskab.models.sheet_upload_to, blank=True, null=True),
+            name='row_image_width',
+            field=models.PositiveIntegerField(blank=True, null=True),
         ),
         migrations.AddField(
             model_name='sheetrow',

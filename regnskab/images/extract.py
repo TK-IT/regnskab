@@ -11,7 +11,7 @@ from django.utils import timezone
 from .utils import save_png
 from .quadrilateral import Quadrilateral, extract_quadrilateral
 from regnskab.models import (
-    SheetImage, SheetRow,
+    SheetImage, SheetRow, Purchase,
 )
 
 
@@ -244,7 +244,26 @@ def extract_sheet_rows(sheet_image):
         yield output.getvalue(), sheet_image.crosses[idx]
 
 
-def extract_images(sheet):
+def get_person_crosses(person_rows):
+    col_bounds = [0, 15, 21, 36]
+    groups = []
+    for i, j in zip(col_bounds[:-1], col_bounds[1:]):
+        group_rows = [r[i:j] for r in person_rows]
+        crosses = box_crosses = 0
+        for r in group_rows:
+            try:
+                x = next(i for i in range(len(r))
+                         if not r[len(r)-1-i])
+            except StopIteration:
+                x = 0
+            r_crosses = sum(r) - x
+            crosses += r_crosses
+            box_crosses += x
+        groups.append([crosses, box_crosses/2])
+    return groups
+
+
+def extract_images(sheet, kinds):
     images = []
     with sheet.image_file_name():
         i = 1
@@ -254,6 +273,8 @@ def extract_images(sheet):
                 im.get_image()
                 images.append(im)
             except Exception:
+                if i == 1:
+                    raise
                 break
             i += 1
 
@@ -267,22 +288,41 @@ def extract_images(sheet):
     stitched_image = []
     stitched_image_height = 0
     rows = []
+    purchases = []
     sheet.row_image_width = width = 920
     position = 1
     for im in images:
         quad = Quadrilateral(im.quad)
+        im_rows = [0] + list(im.rows) + [1]
         i = 0
         for person_row_count in im.person_rows:
             j = i + person_row_count
+
             height = 20 * (j - i)
-            y1, y2 = im.rows[i], im.rows[j]
+            y1, y2 = im_rows[i], im_rows[j]
             corners = quad.to_world([[0, 1, 1, 0], [y1, y1, y2, y2]]).T
             person_quad = Quadrilateral(corners)
             stitched_image.append(extract_quadrilateral(
                 im.get_image(), person_quad, width, height))
+
             rows.append(SheetRow(sheet=sheet, position=position,
                                  image_start=stitched_image_height,
                                  image_stop=stitched_image_height + height))
+
+            p_crosses = get_person_crosses(im.crosses[i:j])
+            for col_idx, (count, boxcount) in enumerate(p_crosses):
+                kind, boxkind = kinds[2*col_idx:2*(col_idx+1)]
+                if count:
+                    purchases.append(Purchase(
+                        row=rows[-1],
+                        kind=kind,
+                        count=count))
+                if boxcount:
+                    purchases.append(Purchase(
+                        row=rows[-1],
+                        kind=boxkind,
+                        count=boxcount))
+
             stitched_image_height += height
             i = j
             position += 1
@@ -293,4 +333,4 @@ def extract_images(sheet):
     png_file = ContentFile(png_data, png_name)
     sheet.row_image = png_file
 
-    return images, rows
+    return images, rows, purchases

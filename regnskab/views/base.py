@@ -21,7 +21,7 @@ from regnskab.forms import (
 )
 from regnskab.models import (
     Sheet, SheetRow, SheetStatus, Profile, Alias, Title,
-    EmailTemplate, Session, SheetImage,
+    EmailTemplate, Session, SheetImage, PurchaseKind,
     Transaction, Purchase,
     compute_balance, get_inka, get_default_prices,
     config, get_profiles_title_status,
@@ -107,34 +107,39 @@ class SheetCreate(FormView):
 
     def form_valid(self, form):
         data = form.cleaned_data
-        s = Sheet(name=data['name'],
-                  start_date=data['start_date'],
-                  end_date=data['end_date'],
-                  period=data['period'],
-                  created_by=self.request.user,
-                  session=self.regnskab_session,
-                  image_file=data['image_file'])
-        print(type(data['image_file']))
-        print(data['image_file'])
-        if data['image_file']:
-            images, rows = extract_images(s)  # sets s.row_image
-        s.save()
-        for i, kind in enumerate(data['kinds']):
-            s.purchasekind_set.create(
+        sheet = Sheet(name=data['name'],
+                      start_date=data['start_date'],
+                      end_date=data['end_date'],
+                      period=data['period'],
+                      created_by=self.request.user,
+                      session=self.regnskab_session,
+                      image_file=data['image_file'])
+        kinds = [
+            PurchaseKind(
+                sheet=sheet,
                 name=kind['name'],
                 position=i + 1,
                 unit_price=kind['unit_price'])
+            for i, kind in enumerate(data['kinds'])]
         if data['image_file']:
-            for o in images + rows:
+            # extract_images sets sheet.row_image
+            images, rows, purchases = extract_images(sheet, kinds)
+        sheet.save()
+        if data['image_file']:
+            for o in images + rows + kinds:
                 o.sheet = o.sheet  # Update sheet_id
-            SheetImage.objects.bulk_create(images)
-            SheetRow.objects.bulk_create(rows)
+            for o in images + rows + kinds:
+                o.save()
+            for o in purchases:
+                o.row = o.row  # Update row_id
+                o.kind = o.kind  # Update kind_id
+            Purchase.objects.bulk_create(purchases)
         logger.info("%s: Opret ny krydsliste id=%s i opgørelse=%s " +
                     "med priser %s",
-                    self.request.user, s.pk, self.regnskab_session.pk,
+                    self.request.user, sheet.pk, self.regnskab_session.pk,
                     ' '.join('%s=%s' % (k['name'], k['unit_price'])
                              for k in data['kinds']))
-        return redirect('regnskab:sheet_update', pk=s.pk)
+        return redirect('regnskab:sheet_update', pk=sheet.pk)
 
 
 class SheetDetail(TemplateView):
@@ -216,8 +221,8 @@ class SheetRowUpdate(TemplateView):
                     counts.append(float(k.count) if k.id else None)
 
                 row_data.append(dict(
-                    profile_id=r['profile'].id,
-                    name=r['name'],
+                    profile_id=r['profile'] and r['profile'].id,
+                    name=r['name'] or '',
                     counts=counts,
                     image=r['image'],
                 ))
@@ -239,7 +244,7 @@ class SheetRowUpdate(TemplateView):
         except Exception as exn:
             raise ValidationError(str(exn))
 
-        KEYS = {'profile_id', 'name', 'counts'}
+        KEYS = {'profile_id', 'name', 'counts', 'image'}
         for row in row_data:
             if set(row.keys()) != KEYS:
                 raise ValidationError("Invalid keys %s" % (set(row.keys()),))
@@ -248,16 +253,13 @@ class SheetRowUpdate(TemplateView):
                 raise ValidationError("Wrong type of counts %s" % (counts,))
             if len(counts) != len(kinds):
                 raise ValidationError("Wrong number of counts %s" % (counts,))
-            if any(c is not None for c in counts):
-                if not row['name']:
-                    raise ValidationError("Name must not be empty")
-                if not row['profile_id']:
-                    raise ValidationError("Unknown name/profile")
-                if not isinstance(row['profile_id'], int):
-                    raise ValidationError("profile_id must be an int")
+            p_id = row['profile_id']
+            if p_id is not None and not isinstance(p_id, int):
+                raise ValidationError("profile_id must be an int")
 
         profile_ids = set(row['profile_id'] for row in row_data
-                          if any(c is not None for c in row['counts']))
+                          if any(c is not None for c in row['counts'])
+                          and row['profile_id'])
         profiles = {
             p.id: p for p in Profile.objects.filter(id__in=sorted(profile_ids))
         }
@@ -265,18 +267,20 @@ class SheetRowUpdate(TemplateView):
         if missing:
             raise ValidationError("Unknown profile IDs %s" % (missing,))
         return [
-            dict(profile=profiles[row['profile_id']],
+            dict(profile=row['profile_id'] and profiles[row['profile_id']],
                  name=row['name'],
                  position=i + 1,
+                 image_start=row['image'] and row['image']['start'],
+                 image_stop=row['image'] and row['image']['stop'],
                  kinds=[Purchase(kind=kind, count=c or 0)
                         for kind, c in zip(kinds, row['counts'])])
             for i, row in enumerate(row_data)
-            if any(c is not None for c in row['counts'])
+            if any(c is not None for c in row['counts']) or row['image']
         ]
 
     def save_rows(self, rows):
         def data(r):
-            return (r['profile'].id, r['name'], r['position'],
+            return (r['profile'] and r['profile'].id, r['name'], r['position'],
                     [(p.kind_id, p.count) for p in r['kinds']])
 
         sheet = self.sheet
@@ -304,7 +308,9 @@ class SheetRowUpdate(TemplateView):
         for o in save:
             save_rows.append(SheetRow(
                 sheet=sheet, profile=o['profile'],
-                name=o['name'], position=o['position']))
+                name=o['name'], position=o['position'],
+                image_start=o['image_start'], image_stop=o['image_stop'],
+            ))
             for c in o['kinds']:
                 if c.count:
                     c.row = save_rows[-1]

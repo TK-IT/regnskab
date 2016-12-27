@@ -197,7 +197,7 @@ class Sheet(models.Model):
 
     image_file = models.FileField(upload_to=sheet_upload_to,
                                   blank=True, null=True)
-    image_file_width = models.PositiveIntegerField(blank=True, null=True)
+    row_image_width = models.PositiveIntegerField(blank=True, null=True)
     row_image = models.FileField(upload_to=sheet_upload_to,
                                  blank=True, null=True)
 
@@ -251,10 +251,10 @@ class Sheet(models.Model):
         for row in result:
             try:
                 title = row['title'] = titles[row['profile'].id]
-            except KeyError:
-                title = row['title'] = None
-                continue
-            row['display_title'] = title.display_title(self.period)
+            except (KeyError, AttributeError):
+                title = row['title'] = row['display_title'] = None
+            else:
+                row['display_title'] = title.display_title(self.period)
 
         if self.legacy_style():
             # Sort rows by title, period
@@ -280,9 +280,10 @@ class Sheet(models.Model):
             yield self._image_file_name
         except AttributeError:
             pass
-        if self.image_file.name:
-            yield os.path.join(settings.MEDIA_ROOT,
-                               self.image_file.name)
+        else:
+            return
+        if self.image_file and os.path.exists(self.image_file.path):
+            yield self.image_file.path
         else:
             with tempfile.NamedTemporaryFile(mode='w+b') as fp:
                 print(type(self.image_file))
@@ -291,7 +292,9 @@ class Sheet(models.Model):
                 fp.write(self.image_file.file.read())
                 fp.flush()
                 self._image_file_name = fp.name
+                print("image_file_name holding on to %s" % fp.name)
                 yield fp.name
+                print("image_file_name letting go of %s" % fp.name)
                 del self._image_file_name
 
     class Meta:
@@ -341,10 +344,10 @@ class SheetRow(models.Model):
         verbose_name_plural = verbose_name + 'e'
 
     def image_data(self):
-        if not self.sheet.image_file:
+        if not self.sheet.row_image:
             return None, None, None, None
-        return (self.sheet.image_file.url,
-                self.sheet.image_file_width,
+        return (self.sheet.row_image.url,
+                self.sheet.row_image_width,
                 self.image_start, self.image_stop)
 
     def image_html(self):
@@ -410,7 +413,7 @@ def compute_balance(profile_ids=None, created_before=None):
         if not balance:
             return balance
 
-    row_qs = SheetRow.objects.all().order_by()
+    row_qs = SheetRow.objects.exclude(profile=None).order_by()
     kind_qs = PurchaseKind.objects.all().order_by()
     if created_before:
         sheet_qs = Sheet.objects.all()
@@ -521,6 +524,7 @@ class Session(models.Model):
 
         purchases = Purchase.objects.filter(
             row__sheet__session=self)
+        purchases = purchases.exclude(row__profile=None)
         purchases = purchases.annotate(
             profile_id=F('row__profile_id'),
             amount=F('count')*F('kind__unit_price'),
@@ -759,7 +763,7 @@ class SheetImage(models.Model):
         from regnskab.images.utils import load_pdf_page
 
         with self.sheet.image_file_name() as filename:
-            self._image = load_pdf_page(filename, self.page)
+            self._image = load_pdf_page(filename, self.page - 1)
 
         return self._image
 

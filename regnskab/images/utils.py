@@ -1,6 +1,8 @@
+import io
 import tempfile
 import subprocess
 
+import numpy as np
 import scipy.misc
 import PIL
 
@@ -48,10 +50,12 @@ def load_pdf_page(filename, page):
              fp.name))
         img = scipy.misc.imread(fp.name)
 
-    return img
+    return img / 255.0
 
 
 def save_png(im_array):
+    if im_array.dtype == np.float64:
+        im_array = (im_array * 255).astype(np.uint8)
     img = PIL.Image.fromarray(im_array)
     output = io.BytesIO()
     img.save(output, 'PNG')

@@ -5,7 +5,7 @@ import scipy.ndimage
 import scipy.signal
 import PIL
 
-from django.core.files import ContentFile
+from django.core.files.base import ContentFile
 from django.utils import timezone
 
 from .utils import save_png
@@ -261,6 +261,8 @@ def extract_images(sheet):
         extract_quad(im)
         extract_rows_cols(im)
         extract_crosses(im)
+        print(im.person_rows)
+        assert im.person_rows
 
     stitched_image = []
     stitched_image_height = 0

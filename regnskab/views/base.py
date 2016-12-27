@@ -114,7 +114,9 @@ class SheetCreate(FormView):
                   created_by=self.request.user,
                   session=self.regnskab_session,
                   image_file=data['image_file'])
-        if image_file:
+        print(type(data['image_file']))
+        print(data['image_file'])
+        if data['image_file']:
             images, rows = extract_images(s)  # sets s.row_image
         s.save()
         for i, kind in enumerate(data['kinds']):
@@ -122,7 +124,7 @@ class SheetCreate(FormView):
                 name=kind['name'],
                 position=i + 1,
                 unit_price=kind['unit_price'])
-        if image_file:
+        if data['image_file']:
             for o in images + rows:
                 o.sheet = o.sheet  # Update sheet_id
             SheetImage.objects.bulk_create(images)

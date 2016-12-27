@@ -1,6 +1,7 @@
 import os
 import re
 import heapq
+import tempfile
 import functools
 import itertools
 import contextlib
@@ -14,6 +15,7 @@ from django.contrib.auth.models import User
 from django.conf import settings
 from django.core.mail import EmailMessage
 from django.utils.text import slugify as dslugify
+from django.utils.html import format_html
 
 from unidecode import unidecode
 from jsonfield import JSONField
@@ -279,10 +281,14 @@ class Sheet(models.Model):
         except AttributeError:
             pass
         if self.image_file.name:
-            yield self.image_file.name
+            yield os.path.join(settings.MEDIA_ROOT,
+                               self.image_file.name)
         else:
             with tempfile.NamedTemporaryFile(mode='w+b') as fp:
-                fp.write(sheet.image_file.read())
+                print(type(self.image_file))
+                print(self.image_file)
+                self.image_file.file.open('rb')
+                fp.write(self.image_file.file.read())
                 fp.flush()
                 self._image_file_name = fp.name
                 yield fp.name

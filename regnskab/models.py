@@ -412,6 +412,44 @@ class Purchase(models.Model):
         verbose_name_plural = verbose_name
 
 
+def compute_balance_raw_sql(profile_ids=None, created_before=None):
+    purchase_query = '''
+        SELECT row.profile_id, (purchase.count * kind.unit_price)
+        FROM regnskab_sheetrow row
+        INNER JOIN regnskab_purchase purchase ON (row.id = purchase.row_id)
+        INNER JOIN regnskab_purchasekind kind ON (purchase.kind_id = kind.id)
+        WHERE row.profile_id IS NOT NULL
+    '''
+    '''
+        SELECT "regnskab_sheetrow"."profile_id" AS "profile_id",
+        ("regnskab_purchase"."count" * "regnskab_purchasekind"."unit_price") AS "amount"
+        FROM "regnskab_purchase"
+        INNER JOIN "regnskab_sheetrow" ON ( "regnskab_purchase"."row_id" = "regnskab_sheetrow"."id" )
+        INNER JOIN "regnskab_purchasekind" ON ( "regnskab_purchase"."kind_id" = "regnskab_purchasekind"."id" )
+        WHERE NOT ("regnskab_sheetrow"."profile_id" IS NULL)
+    '''
+    transaction_query = '''
+        SELECT profile_id, (amount) FROM regnskab_transaction
+        --GROUP BY profile_id
+    '''
+    balance = {}
+
+    from django.db import connection
+
+    with connection.cursor() as cursor:
+        print(purchase_query)
+        cursor.execute(purchase_query)
+        for profile_id, amount in cursor.fetchall():
+            balance[profile_id] = (
+                balance.get(profile_id, Decimal()) + Decimal(amount))
+        print(transaction_query)
+        cursor.execute(transaction_query)
+        for profile_id, amount in cursor.fetchall():
+            balance[profile_id] = (
+                balance.get(profile_id, Decimal()) + Decimal(amount))
+    return balance
+
+
 def compute_balance_double_join(profile_ids=None, created_before=None):
     balance = defaultdict(Decimal)
     purchase_qs = Purchase.objects.all().order_by()
@@ -423,7 +461,9 @@ def compute_balance_double_join(profile_ids=None, created_before=None):
     purchase_qs = purchase_qs.annotate(profile_id=F('row__profile_id'))
     purchase_qs = purchase_qs.annotate(
         amount=F('count') * F('kind__unit_price'))
+    purchase_qs = purchase_qs.exclude(profile_id=None)
     purchase_qs = purchase_qs.values_list('profile_id', 'amount')
+    print(purchase_qs.query)
     for profile, amount in purchase_qs:
         balance[profile] += amount
     transaction_qs = Transaction.objects.all()
@@ -432,6 +472,13 @@ def compute_balance_double_join(profile_ids=None, created_before=None):
     transaction_qs = transaction_qs.values_list('profile_id', 'amount')
     if created_before:
         transaction_qs = transaction_qs.filter(created_time__lt=created_before)
+
+    from django.db import connection
+
+    with connection.cursor() as cursor:
+        cursor.execute(str(transaction_qs.query))
+        transaction_qs = list(cursor.fetchall())
+
     for profile, amount in transaction_qs:
         balance[profile] += amount
     return balance

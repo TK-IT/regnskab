@@ -103,12 +103,11 @@ def fill_in_skipped(xs):
     m = np.median(diff)
     # We expect every row height to be roughly m.
     # If a row height is more than 1.5 m, we skipped a row.
-    skipped = np.round((diff - m) / m)
+    count = np.round(diff / m)
     fixed = []
-    for y, extra in zip(xs[:-1], skipped):
-        fixed.append(y)
-        for i in range(int(extra)):
-            fixed.append(y + (i+1) * m)
+    for y, c in zip(xs[:-1], count):
+        for i in range(int(c)):
+            fixed.append(y + i * m)
     fixed.append(xs[-1])
     return fixed
 

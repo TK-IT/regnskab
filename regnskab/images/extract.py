@@ -77,13 +77,13 @@ def find_bbox(im, sigma=1, margin1=10, threshold=0.6):
     im = gaussian_blur(im, sigma)
     dark = im < threshold
 
-    yx = (margin1 + np.array(in_largest_component(dark).nonzero())).T
-    # Each row of yx is a cell of the largest dark component of 'im'
-    ys, xs = yx.T
-    top_left = yx[np.argmax(-xs - ys / 2)]
-    bottom_right = yx[np.argmax(xs + ys)]
-    bottom_left = yx[np.argmax(-xs + ys)]
-    # top_right = yx[np.argmax(xs - ys / 2)]
+    ys, xs = margin1 + np.array(in_largest_component(dark).nonzero())
+    xy = np.transpose((xs, ys))
+    # Each row of xy is a cell of the largest dark component of 'im'
+    top_left = xy[np.argmax(-xs - ys / 2)]
+    bottom_right = xy[np.argmax(xs + ys)]
+    bottom_left = xy[np.argmax(-xs + ys)]
+    # top_right = xy[np.argmax(xs - ys / 2)]
     top_right = top_left + (bottom_right - bottom_left)
 
     corners = np.transpose(

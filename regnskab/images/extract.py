@@ -92,13 +92,13 @@ def find_bbox(im, sigma=1, margin1=10, threshold=0.6):
     # Set top_right to be top_left + (bottom_right - bottom_left)
     corners[:, 1] = corners[:, 0] + (corners[:, 2] - corners[:, 3])
     corners += margin1
-    return Quadrilateral(corners), obj
+    return Quadrilateral(corners)
 
 
 def extract_quad(sheet_image):
-    quad, obj = find_bbox(to_grey(sheet_image.get_image(),
-                                  sheet_image.parameters),
-                          parameters=sheet_image.parameters)
+    quad = find_bbox(to_grey(sheet_image.get_image(),
+                             sheet_image.parameters),
+                     parameters=sheet_image.parameters)
     sheet_image.quad = quad.arg().tolist()
 
 

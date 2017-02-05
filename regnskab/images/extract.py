@@ -96,6 +96,7 @@ def extract_quad(sheet_image):
                              sheet_image.parameters),
                      parameters=sheet_image.parameters)
     sheet_image.quad = quad.arg().tolist()
+    return quad
 
 
 def fill_in_skipped(xs):

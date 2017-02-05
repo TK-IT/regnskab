@@ -99,10 +99,32 @@ def extract_quad(sheet_image):
 
 
 def fill_in_skipped(xs):
+    '''
+    Insert and remove elements in a sorted list to make all
+    pairwise differences roughly the median difference.
+
+    >>> xs = list(range(10))
+
+    Since elements of xs are evenly spaced, no changes are made:
+
+    >>> fill_in_skipped(xs) == xs
+    True
+
+    If we remove an element from xs, it is restored:
+
+    >>> missing_one = xs[:2] + xs[3:]
+    >>> fill_in_skipped(missing_one) == xs
+    True
+
+    If we insert an extra element in between two, it is removed:
+
+    >>> extra_one = xs[:2] + [xs[2] - 0.1] + xs[2:]
+    >>> fill_in_skipped(extra_one) == xs
+    True
+    '''
+
     diff = np.diff(xs)
     m = np.median(diff)
-    # We expect every row height to be roughly m.
-    # If a row height is more than 1.5 m, we skipped a row.
     count = np.round(diff / m)
     fixed = []
     for y, c in zip(xs[:-1], count):

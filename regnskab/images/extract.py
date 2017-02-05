@@ -59,12 +59,17 @@ def max_object(labels, max_label):
     return max(range(len(objects)), key=object_area) + 1
 
 
+def gaussian_blur(im, sigma):
+    if sigma > 0.01:
+        im = scipy.ndimage.filters.gaussian_filter(im, sigma, mode='constant')
+    return im
+
+
 @parameter('sigma margin1 threshold')
 def find_bbox(im, sigma=1, margin1=10, threshold=0.6):
     im = im[margin1:-margin1, margin1:-margin1]
-    if sigma > 0.01:
-        im = scipy.ndimage.filters.gaussian_filter(im, sigma, mode='constant')
-    dark = (im < threshold)
+    im = gaussian_blur(im, sigma)
+    dark = im < threshold
 
     labels, no_labels = scipy.ndimage.label(dark)
     label = max_object(labels, no_labels)

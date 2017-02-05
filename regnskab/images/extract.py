@@ -169,14 +169,18 @@ def find_peaks(xs, cutoff, skip_start=True, skip_end=True, full=False):
         peaks, cutoff, min_cutoff, max_cutoff, opt_cutoff)
 
 
+def get_vertical_slab(input, x1, x2):
+    i1 = int(x1 * input.shape[1])
+    i2 = int(x2 * input.shape[1])
+    return input[:, i1:i2]
+
+
 def get_name_part(sheet_image, input):
-    k = int(sheet_image.cols[0] * input.shape[1])
-    return input[:, :k]
+    return get_vertical_slab(input, 0, sheet_image.cols[0])
 
 
 def get_crosses_part(sheet_image, input):
-    k = int(sheet_image.cols[0] * input.shape[1])
-    return input[:, k:]
+    return get_vertical_slab(input, sheet_image.cols[0], 1)
 
 
 @parameter('cutoff')

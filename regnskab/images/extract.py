@@ -56,11 +56,7 @@ def max_object(labels, max_label):
             return slice_length(o[0], 0) * slice_length(o[1], 1)
 
     object_areas = np.fromiter(map(object_area, objects), dtype=np.int)
-    k = 1
-    if k == 1:
-        mos = [np.argmax(object_areas)]
-    else:
-        mos = reversed(list(np.argsort(object_areas)[-5:]))
+    mos = [np.argmax(object_areas)]
 
     return [
         (mo + 1,

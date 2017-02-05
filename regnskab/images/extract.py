@@ -49,13 +49,14 @@ def max_object(labels, max_label):
         start, stop, stride = s.indices(labels.shape[axis])
         return stop - start
 
-    def object_area(o):
+    def object_area(i):
+        o = objects[i]
         if o is None:
             return 0
         else:
             return slice_length(o[0], 0) * slice_length(o[1], 1)
 
-    return max(range(len(objects)), key=lambda i: object_area(objects[i])) + 1
+    return max(range(len(objects)), key=object_area) + 1
 
 
 @parameter('sigma margin1 threshold')

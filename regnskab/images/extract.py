@@ -65,26 +65,29 @@ def gaussian_blur(im, sigma):
     return im
 
 
+def in_largest_component(im):
+    labels, no_labels = scipy.ndimage.label(im)
+    label = max_object(labels, no_labels)
+    return labels == label
+
+
 @parameter('sigma margin1 threshold')
 def find_bbox(im, sigma=1, margin1=10, threshold=0.6):
     im = im[margin1:-margin1, margin1:-margin1]
     im = gaussian_blur(im, sigma)
     dark = im < threshold
 
-    labels, no_labels = scipy.ndimage.label(dark)
-    label = max_object(labels, no_labels)
-    ys, xs = (labels == label).nonzero()
-    top_left = np.argmax(-xs - ys / 2)
-    top_right = np.argmax(xs - ys / 2)  # Top right not used, see below
-    bottom_right = np.argmax(xs + ys)
-    bottom_left = np.argmax(-xs + ys)
+    yx = (margin1 + np.array(in_largest_component(dark).nonzero())).T
+    # Each row of yx is a cell of the largest dark component of 'im'
+    ys, xs = yx.T
+    top_left = yx[np.argmax(-xs - ys / 2)]
+    bottom_right = yx[np.argmax(xs + ys)]
+    bottom_left = yx[np.argmax(-xs + ys)]
+    # top_right = yx[np.argmax(xs - ys / 2)]
+    top_right = top_left + (bottom_right - bottom_left)
 
     corners = np.transpose(
-        [[xs[i], ys[i]]
-         for i in (top_left, top_right, bottom_right, bottom_left)])
-    # Set top_right to be top_left + (bottom_right - bottom_left)
-    corners[:, 1] = corners[:, 0] + (corners[:, 2] - corners[:, 3])
-    corners += margin1
+        (top_left, top_right, bottom_right, bottom_left))
     return Quadrilateral(corners)
 
 

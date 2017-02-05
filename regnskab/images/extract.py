@@ -55,9 +55,8 @@ def max_object(labels, max_label):
         else:
             return slice_length(o[0], 0) * slice_length(o[1], 1)
 
-    object_areas = np.fromiter(map(object_area, objects), dtype=np.int)
-    mo = np.argmax(object_areas)
-    return mo + 1
+    object_areas = [object_area(o) for o in objects]
+    return 1 + max(range(len(object_areas)), key=lambda i: object_areas[i])
 
 
 @parameter('sigma margin1 threshold')

@@ -57,9 +57,7 @@ def max_object(labels, max_label):
 
     object_areas = np.fromiter(map(object_area, objects), dtype=np.int)
     mo = np.argmax(object_areas)
-    return (mo + 1,
-            object_areas[mo],
-            np.sum(labels == mo + 1))
+    return mo + 1
 
 
 @parameter('sigma margin1 threshold')
@@ -70,7 +68,7 @@ def find_bbox(im, sigma=1, margin1=10, threshold=0.6):
     dark = (im < threshold)
 
     labels, no_labels = scipy.ndimage.label(dark)
-    (label, area, count) = max_object(labels, no_labels)
+    label = max_object(labels, no_labels)
     ys, xs = (labels == label).nonzero()
     top_left = np.argmax(-xs - ys / 2)
     top_right = np.argmax(xs - ys / 2)  # Top right not used, see below

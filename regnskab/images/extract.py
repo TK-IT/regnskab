@@ -78,8 +78,6 @@ def find_bbox(im, sigma=1, margin1=10, threshold=0.6):
 
     labels, no_labels = scipy.ndimage.label(dark)
     (label, area, count), = max_object(labels, no_labels, 1)
-    obj = np.zeros((im.shape[0] + 2*margin1, im.shape[1] + 2*margin1))
-    obj[margin1:-margin1, margin1:-margin1] = (labels == label) * 1.0
     ys, xs = (labels == label).nonzero()
     top_left = np.argmax(-xs - ys / 2)
     top_right = np.argmax(xs - ys / 2)  # Top right not used, see below

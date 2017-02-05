@@ -183,23 +183,23 @@ def get_crosses_part(sheet_image, input):
     return get_vertical_slab(input, sheet_image.cols[0], 1)
 
 
+def find_peaks_avg(im, axis, cutoff):
+    avg = np.mean(im, axis=axis)
+    size = len(avg)
+    peaks = find_peaks(avg, cutoff)
+    return fill_in_skipped((peaks / size).tolist() + [1])
+
+
 @parameter('cutoff')
 def extract_cols(sheet_image, input_grey, cutoff=0.39):
-    image_width = input_grey.shape[1]
-    col_avg = np.mean(input_grey, axis=0)
-    col_peaks = find_peaks(-col_avg, -cutoff)
-    sheet_image.cols = fill_in_skipped(
-        (col_peaks / image_width).tolist() + [1])
+    sheet_image.cols = find_peaks_avg(-input_grey, axis=0, cutoff=-cutoff)
 
 
 @parameter('cutoff')
 def extract_rows(sheet_image, input_grey, cutoff=0.6):
     crosses_grey = get_crosses_part(sheet_image, input_grey)
-    height = crosses_grey.shape[0]
-    row_avg = np.mean(crosses_grey, axis=1)
-    row_peaks = find_peaks(-row_avg, -cutoff)
-    sheet_image.rows = fill_in_skipped(
-        [0] + (row_peaks / height).tolist() + [1])
+    sheet_image.rows = (
+        [0] + find_peaks_avg(-crosses_grey, axis=1, cutoff=-cutoff))
 
 
 @parameter('cutoff')

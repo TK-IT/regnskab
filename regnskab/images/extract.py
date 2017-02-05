@@ -55,8 +55,7 @@ def max_object(labels, max_label):
         else:
             return slice_length(o[0], 0) * slice_length(o[1], 1)
 
-    object_areas = [object_area(o) for o in objects]
-    return 1 + max(range(len(object_areas)), key=lambda i: object_areas[i])
+    return max(range(len(objects)), key=lambda i: object_area(objects[i])) + 1
 
 
 @parameter('sigma margin1 threshold')

@@ -42,7 +42,7 @@ def to_grey(im, parameters):
         return im
 
 
-def max_object(labels, max_label, k):
+def max_object(labels, max_label):
     objects = scipy.ndimage.find_objects(labels, max_label)
 
     def slice_length(s, axis):
@@ -56,6 +56,7 @@ def max_object(labels, max_label, k):
             return slice_length(o[0], 0) * slice_length(o[1], 1)
 
     object_areas = np.fromiter(map(object_area, objects), dtype=np.int)
+    k = 1
     if k == 1:
         mos = [np.argmax(object_areas)]
     else:
@@ -77,7 +78,7 @@ def find_bbox(im, sigma=1, margin1=10, threshold=0.6):
     dark = (im < threshold)
 
     labels, no_labels = scipy.ndimage.label(dark)
-    (label, area, count), = max_object(labels, no_labels, 1)
+    (label, area, count), = max_object(labels, no_labels)
     ys, xs = (labels == label).nonzero()
     top_left = np.argmax(-xs - ys / 2)
     top_right = np.argmax(xs - ys / 2)  # Top right not used, see below

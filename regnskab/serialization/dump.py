@@ -1,5 +1,6 @@
 import os
 import sys
+import datetime
 import operator
 
 if __name__ == "__main__":
@@ -15,6 +16,9 @@ if __name__ == "__main__":
     import django
     django.setup()
 
+
+from django.db import models
+
 from regnskab.models import (
     Profile, Title, Alias, SheetStatus,
     Session, Transaction,
@@ -24,11 +28,22 @@ from regnskab.models import (
 )
 
 
+DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S'
+
+
 def field_dumper(field):
     field_name = field.name
 
-    def dump_field(self, instance):
-        return getattr(instance, field_name)
+    if isinstance(field, models.DateTimeField):
+        def dump_field(self, instance):
+            v = getattr(instance, field_name)
+            if v is not None:
+                return v.strftime(DATETIME_FORMAT)
+    else:
+        if isinstance(field, models.ForeignKey):
+            field_name += '_id'
+        def dump_field(self, instance):
+            return getattr(instance, field_name)
 
     return dump_field
 
@@ -36,8 +51,16 @@ def field_dumper(field):
 def field_loader(field):
     field_name = field.name
 
-    def load_field(self, data, instance):
-        setattr(instance, field_name, data[field_name])
+    if isinstance(field, models.DateTimeField):
+        def load_field(self, data, instance):
+            v = data[field_name]
+            setattr(instance, field_name,
+                    v and datetime.datetime.strptime(v, DATETIME_FORMAT))
+    else:
+        if isinstance(field, models.ForeignKey):
+            field_name += '_id'
+        def load_field(self, data, instance):
+            setattr(instance, field_name, data[field_name])
 
     return load_field
 
@@ -61,8 +84,11 @@ def model_dumper(model):
             pass
         else:
             for child_name, child_type in child_fields.items():
-                child_type_instance = child_type()
-                child_dump = child_type_instance.dump()
+                try:
+                    child_dump_fn = getattr(self, 'dump_' + child_name)
+                except AttributeError:
+                    child_dump_fn = child_type().dump()
+                child_dump = child_dump_fn()
                 assert isinstance(child_dump, dict)
                 for parent, data in child_dump.items():
                     children.setdefault(parent, {})[child_name] = data
@@ -148,12 +174,42 @@ class SheetStatusData(base(SheetStatus)):
 
 
 class ProfileData(base(Profile)):
-    fields = ('name', 'email')
+    fields = ('id', 'name', 'email')
     children = {
         'titles': TitleData,
         'aliases': AliasData,
         'statuses': SheetStatusData,
     }
+
+
+class EmailData(base(Email)):
+    parent_field = 'session'
+    fields = ('profile', 'subject', 'body',
+              'recipient_name', 'recipient_email')
+
+
+class EmailTemplateData(base(EmailTemplate)):
+    fields = ('name', 'subject', 'body', 'format', 'created_time')
+
+
+class SheetData(base(Sheet)):
+    parent_field = 'session'
+    fields = ('name', 'start_date', 'end_date', 'period', 'created_time')
+
+
+class SessionData(base(Session)):
+    fields = ('email_template', 'period', 'send_time', 'created_time')
+    children = {
+        'emails': EmailData,
+        'sheets': SheetData,
+    }
+
+
+class LegacySheetData(base(Sheet)):
+    fields = ('name', 'start_date', 'end_date', 'period', 'created_time')
+
+    def get_queryset(self):
+        return super().get_queryset().filter(session=None)
 
 
 def main():

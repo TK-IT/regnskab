@@ -1,5 +1,6 @@
 import os
 import sys
+import decimal
 import datetime
 import operator
 import itertools
@@ -45,6 +46,10 @@ def field_dumper(field):
         def dump_field(self, instance):
             v = getattr(instance, field_name)
             return v and v.strftime(DATE_FORMAT)
+    elif isinstance(field, models.DecimalField):
+        def dump_field(self, instance):
+            v = getattr(instance, field_name)
+            return v and str(v)
     else:
         if isinstance(field, models.ForeignKey):
             field_name += '_id'
@@ -68,6 +73,10 @@ def field_loader(field):
             v = data[field_name]
             setattr(instance, field_name,
                     v and datetime.datetime.strptime(v, DATE_FORMAT).date())
+    elif isinstance(field, models.DecimalField):
+        def load_field(self, data, instance):
+            v = data[field_name]
+            setattr(instance, field_name, v and decimal.Decimal(v))
     else:
         if isinstance(field, models.ForeignKey):
             field_name += '_id'
@@ -100,17 +109,21 @@ def model_dumper(model):
                 try:
                     child_dump_fn = getattr(self, 'dump_' + child_name)
                 except AttributeError:
-                    child_dump_fn = child_type().dump()
+                    child_dump_fn = child_type().dump
                 child_dump = child_dump_fn()
                 assert isinstance(child_dump, dict)
                 for parent, data in child_dump.items():
-                    children.setdefault(parent, {})[child_name] = data
+                    if data is not self.OMIT:
+                        children.setdefault(parent, {})[child_name] = data
 
         field_names = self._fields()
         for instance in self.get_queryset():
-            instance_data = {
-                field_name: getattr(self, 'dump_' + field_name)(instance)
-                for field_name in field_names}
+            instance_data = {}
+            for field_name in field_names:
+                dump_method = getattr(self, 'dump_' + field_name)
+                dumped_value = dump_method(instance)
+                if dumped_value is not self.OMIT:
+                    instance_data[field_name] = dumped_value
             instance_data.update(children.get(instance.pk, {}))
             by_parent.setdefault(parent_fn(instance), []).append(instance_data)
         return result
@@ -129,6 +142,8 @@ def model_loader(model):
 
 
 class Data:
+    OMIT = object()
+
     def _fields(self):
         try:
             return self._fields_cache
@@ -209,26 +224,37 @@ class EmailTemplateData(base(EmailTemplate)):
     fields = ('name', 'subject', 'body', 'format', 'created_time')
 
 
+class SheetKindRelationData(base(PurchaseKind.sheets.through)):
+    fields = ('sheet_id', 'purchasekind_id')
+
+
+class PurchaseKindData(base(PurchaseKind)):
+    fields = ('id', 'position', 'name', 'unit_price')
+
+
+class PurchaseData(base(Purchase)):
+    parent_field = 'row'
+    fields = ('kind', 'count')
+
+
+class SheetRowData(base(SheetRow)):
+    parent_field = 'sheet'
+    fields = ('position', 'name', 'profile')
+    exclude = ('image_start', 'image_stop')
+    children = {
+        'purchases': PurchaseData,
+    }
+
+
 class SheetData(base(Sheet)):
     parent_field = 'session'
-    fields = ('name', 'start_date', 'end_date', 'period', 'created_time')
+    fields = ('id', 'name', 'start_date', 'end_date', 'period', 'created_time')
+    children = {
+        'rows': SheetRowData,
+    }
 
-    def dump_kinds(self, sheets):
-        kinds = {kind.id: kind
-                 for kind in PurchaseKind.objects.all()}
-        sheet_kind_qs = PurchaseKind.sheets.through.all()
-        sheet_kind_qs = sheet_kind_qs.order_by('sheet_id')
-        sheet_kind_qs = sheet_kind_qs.values_list('sheet_id', 'kind_id')
-        sheet_kinds = itertools.groupby(sheet_kind_qs, key=lambda o: o[0])
-        sheet_kinds = self.sheet_kinds = {
-            sheet_id: sorted((kind_id for _, kind_id in group),
-                             key=lambda kind_id: kinds[kind_id].position)
-            for sheet_id, group in sheet_kinds
-        }
-        for sheet in sheets:
-            yield sheet_kinds[sheet.id]
-
-    def dump_rows(self, sheets):
+    def get_queryset(self):
+        return super().get_queryset().exclude(session=None)
 
 
 class SessionData(base(Session)):
@@ -238,38 +264,61 @@ class SessionData(base(Session)):
         'sheets': SheetData,
     }
 
-    def dump_sheets(self, sessions):
-        sheets_by_session = {}
-        sheet_qs = Sheet.objects.exclude(session=None)
-        for sheet_object in sheet_qs:
-            sheet = {
-                'name': sheet_object.name,
-            session = sheets_by_session.setdefault(sheet_object.session_id, [])
-            session.append(sheet)
-        purchase_qs = Purchase.objects.all()
-        purchase_qs = purchase_qs.annotate(
-            session_id='row__sheet__session_id',
-            sheet_id='row__sheet_id',
-            kind_id='row__kind_id',
-            position='row__position',
-        )
-        purchase_qs = purchase_qs.exclude(session_id=None)
-        purchase_qs = purchase_qs.values_list(
-            'session_id', 'sheet_id', 'kind_id', 'position', 'count')
-        for session in sessions:
-            raise NotImplementedError
+
+class LegacySheetRowData(base(SheetRow)):
+    parent_field = 'sheet'
+    fields = ('profile',)
+    exclude = ('name', 'position','image_start', 'image_stop')
+    children = {
+        'purchases': PurchaseData,
+    }
+
+    def load(self, iterable):
+        dump_lists = list(iterable)
+        for dump_list in dump_lists:
+            res = []
+            for i, o in enumerate(dump_list):
+                res.append(SheetRow(
+                    profile_id=o['profile'],
+                    purcha
 
 
 class LegacySheetData(base(Sheet)):
-    fields = ('name', 'start_date', 'end_date', 'period', 'created_time')
+    fields = ('id', 'name', 'start_date', 'end_date', 'period', 'created_time')
+    children = {
+        'rows': LegacySheetRowData,
+    }
 
     def get_queryset(self):
         return super().get_queryset().filter(session=None)
 
 
+class LegacyTransactionData(base(Transaction)):
+    fields = ('kind', 'profile', 'time', 'period', 'amount', 'note',
+              'created_time')
+
+    def get_queryset(self):
+        return super().get_queryset().filter(session=None)
+
+
+class RegnskabData:
+    attributes = {
+        'profiles': ProfileData,
+        'sessions': SessionData,
+        'old_sheets': LegacySheetData,
+        'old_transactions': LegacyTransactionData,
+    }
+
+    def dump(self):
+        return {k: v().dump() for k, v in self.attributes.items()}
+
+    def load(self):
+        return {k: v().load() for k, v in self.attributes.items()}
+
+
 def main():
     from pprint import pprint
-    pprint(ProfileData().dump())
+    pprint(RegnskabData().dump(), width=200)
 
 
 if __name__ == '__main__':

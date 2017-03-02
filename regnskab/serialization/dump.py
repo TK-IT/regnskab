@@ -2,6 +2,8 @@ import os
 import sys
 import datetime
 import operator
+import itertools
+import collections
 
 if __name__ == "__main__":
     if os.path.exists('manage.py'):
@@ -29,6 +31,7 @@ from regnskab.models import (
 
 
 DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S'
+DATE_FORMAT = '%Y-%m-%d'
 
 
 def field_dumper(field):
@@ -37,11 +40,15 @@ def field_dumper(field):
     if isinstance(field, models.DateTimeField):
         def dump_field(self, instance):
             v = getattr(instance, field_name)
-            if v is not None:
-                return v.strftime(DATETIME_FORMAT)
+            return v and v.strftime(DATETIME_FORMAT)
+    elif isinstance(field, models.DateField):
+        def dump_field(self, instance):
+            v = getattr(instance, field_name)
+            return v and v.strftime(DATE_FORMAT)
     else:
         if isinstance(field, models.ForeignKey):
             field_name += '_id'
+
         def dump_field(self, instance):
             return getattr(instance, field_name)
 
@@ -56,9 +63,15 @@ def field_loader(field):
             v = data[field_name]
             setattr(instance, field_name,
                     v and datetime.datetime.strptime(v, DATETIME_FORMAT))
+    elif isinstance(field, models.DateTimeField):
+        def load_field(self, data, instance):
+            v = data[field_name]
+            setattr(instance, field_name,
+                    v and datetime.datetime.strptime(v, DATE_FORMAT).date())
     else:
         if isinstance(field, models.ForeignKey):
             field_name += '_id'
+
         def load_field(self, data, instance):
             setattr(instance, field_name, data[field_name])
 
@@ -71,7 +84,7 @@ def model_dumper(model):
         try:
             parent_field = self.parent_field
         except AttributeError:
-            parent_fn = lambda instance: None
+            parent_fn = lambda instance: None  # noqa
             result = by_parent[None] = []
         else:
             parent_fn = operator.attrgetter(parent_field + '_id')
@@ -110,7 +123,7 @@ def model_loader(model):
         instance = model()
         for field_name in self._fields():
             getattr(self, 'load_' + field_name)(data, instance)
-        return model(**kwargs)
+        return instance
 
     return load_model
 
@@ -130,17 +143,21 @@ class Data:
             exclude = set(self.exclude)
         except AttributeError:
             exclude = set()
+        method_order = []
         dump_methods = set()
         load_methods = set()
         for k in dir(self):
             if k.startswith('dump_'):
                 dump_methods.add(k[5:])
+                if k[5:] not in exclude:
+                    method_order.append(k[5:])
             elif k.startswith('load_'):
                 load_methods.add(k[5:])
         diff = (dump_methods - exclude) ^ (load_methods - exclude)
         if diff:
             raise TypeError(diff)
-        self._fields_cache = sorted(dump_methods - exclude)
+        explicit_fields = getattr(self, 'fields', ())
+        self._fields_cache = list(explicit_fields) + method_order
         return self._fields_cache
 
 
@@ -196,6 +213,23 @@ class SheetData(base(Sheet)):
     parent_field = 'session'
     fields = ('name', 'start_date', 'end_date', 'period', 'created_time')
 
+    def dump_kinds(self, sheets):
+        kinds = {kind.id: kind
+                 for kind in PurchaseKind.objects.all()}
+        sheet_kind_qs = PurchaseKind.sheets.through.all()
+        sheet_kind_qs = sheet_kind_qs.order_by('sheet_id')
+        sheet_kind_qs = sheet_kind_qs.values_list('sheet_id', 'kind_id')
+        sheet_kinds = itertools.groupby(sheet_kind_qs, key=lambda o: o[0])
+        sheet_kinds = self.sheet_kinds = {
+            sheet_id: sorted((kind_id for _, kind_id in group),
+                             key=lambda kind_id: kinds[kind_id].position)
+            for sheet_id, group in sheet_kinds
+        }
+        for sheet in sheets:
+            yield sheet_kinds[sheet.id]
+
+    def dump_rows(self, sheets):
+
 
 class SessionData(base(Session)):
     fields = ('email_template', 'period', 'send_time', 'created_time')
@@ -203,6 +237,27 @@ class SessionData(base(Session)):
         'emails': EmailData,
         'sheets': SheetData,
     }
+
+    def dump_sheets(self, sessions):
+        sheets_by_session = {}
+        sheet_qs = Sheet.objects.exclude(session=None)
+        for sheet_object in sheet_qs:
+            sheet = {
+                'name': sheet_object.name,
+            session = sheets_by_session.setdefault(sheet_object.session_id, [])
+            session.append(sheet)
+        purchase_qs = Purchase.objects.all()
+        purchase_qs = purchase_qs.annotate(
+            session_id='row__sheet__session_id',
+            sheet_id='row__sheet_id',
+            kind_id='row__kind_id',
+            position='row__position',
+        )
+        purchase_qs = purchase_qs.exclude(session_id=None)
+        purchase_qs = purchase_qs.values_list(
+            'session_id', 'sheet_id', 'kind_id', 'position', 'count')
+        for session in sessions:
+            raise NotImplementedError
 
 
 class LegacySheetData(base(Sheet)):

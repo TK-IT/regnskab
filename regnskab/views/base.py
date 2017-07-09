@@ -384,6 +384,19 @@ class SheetRowUpdate(FormView):
             self.get_context_data(form=form, saved=True))
 
 
+class PurchaseStatsTableBase:
+    primary_key_headers = None
+
+    def add_dataset(self, columns):
+        pass
+
+
+class YearPurchaseStats(PurchaseStatsTableBase):
+    primary_key_headers = ['Årgang']
+
+    def 
+
+
 class SessionList(TemplateView):
     template_name = 'regnskab/session_list.html'
 
@@ -461,9 +474,19 @@ class SessionList(TemplateView):
         except (ValueError, KeyError):
             period = config.GFYEAR
 
+        context_data['period'] = period
+
         by_year = sum_matrix(
             Purchase.objects.all(),
             'kind__name', 'row__sheet__period', 'count')
+        by_year.update(sum_matrix(
+            Transaction.objects.all(), 'kind', 'period', 'amount'))
+        by_year, by_year_columns = self.dense_rows(by_year)
+
+        years = sorted(by_year.items())
+        context_data['years'] = years
+        context_data['years_columns'] = by_year_columns
+
         purchases_by_session_qs = Purchase.objects.filter(
             row__sheet__session__period=period)
         by_session = sum_matrix(
@@ -476,8 +499,6 @@ class SessionList(TemplateView):
             purchases_by_sheet_qs,
             'kind__name', 'row__sheet_id', 'count')
 
-        by_year.update(sum_matrix(
-            Transaction.objects.all(), 'kind', 'period', 'amount'))
         transactions_by_session_qs = Transaction.objects.filter(
             session__period=period)
         by_session.update(sum_matrix(
@@ -487,8 +508,6 @@ class SessionList(TemplateView):
         by_sheet_time = sum_matrix(
             transactions_by_sheet_qs, 'kind', 'time', 'amount')
         self.merge_legacy_data(by_sheet_time, by_sheet, period)
-
-        by_year, by_year_columns = self.dense_rows(by_year)
 
         # If we have both new and old data, then we cannot
         # remove empty columns.
@@ -507,14 +526,10 @@ class SessionList(TemplateView):
             s.created_date = s.created_time.date()
             s.stats = by_session.pop(s.id, None)
             s.href = reverse('regnskab:session_update', kwargs=dict(pk=s.id))
-        years = sorted(by_year.items())
 
         context_data['sessions'] = sheets + sessions
         context_data['sessions_columns'] = (
             by_session_columns or by_sheet_columns)
-        context_data['years'] = years
-        context_data['years_columns'] = by_year_columns
-        context_data['period'] = period
 
         return context_data
 

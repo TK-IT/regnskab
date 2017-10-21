@@ -109,7 +109,7 @@ class EmailTemplateForm(forms.ModelForm):
 
     def save(self):
         instance = super().save(commit=False)
-        instance.clean()
+        instance.full_clean()
         instance.save()
         self.save_m2m()
         return instance

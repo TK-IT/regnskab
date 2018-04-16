@@ -1,3 +1,15 @@
+# Moved to new repository
+
+**This repository is abandoned!**
+
+Future development happens in the [web repository](https://github.com/TK-IT/web) in the two app directories:
+
+* [regnskab](https://github.com/TK-IT/web/tree/master/tkweb/apps/regnskab)
+* [krydsliste](https://github.com/TK-IT/web/tree/master/tkweb/apps/krydsliste)
+
+The old README below may be of historical interest to you, however.
+
+
 # Regnskab
 
 To start, create `regnskabsite/settings/__init__.py` with the following contents:
